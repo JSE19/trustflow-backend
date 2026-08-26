@@ -35,6 +35,7 @@ The TrustFlow Backend API provides off-chain services for the TrustFlow gig econ
 - **Webhooks**: Register endpoints to receive event notifications
 - **Monitoring**: Health checks and Prometheus metrics
 - **IPFS Pinning**: Pin deliverables across multiple IPFS providers with content-hash verification, automatic failover, and a background re-pin worker for durability
+- **Admin Analytics**: Read-only system-wide dashboards for protocol admins, aggregating escrow, gig, dispute, reputation, migration, and reconciliation state
 
 ---
 
@@ -101,6 +102,69 @@ RATE_LIMIT_LOCKOUT_SECONDS=900
 Mutating endpoints that create a resource (currently `POST /gigs` and `POST /escrows`) accept an
 optional `Idempotency-Key` header so retries — e.g. after a client timeout — don't create
 duplicate resources.
+
+## 🌐 Stellar RPC Failover
+
+The TrustFlow backend implements automatic failover for Stellar RPC endpoints to ensure high availability. When the primary RPC endpoint becomes unavailable, the system automatically switches to configured fallback endpoints.
+
+### How It Works
+
+1. **Multiple Endpoint Configuration**: Configure comma-separated Horizon and Soroban RPC endpoints in `STELLAR_HORIZON_ENDPOINTS` and `SOROBAN_RPC_ENDPOINTS` environment variables.
+
+2. **Health Monitoring**: Regular health checks (every 30 seconds) monitor all configured endpoints.
+
+3. **Automatic Failover**: If the current endpoint fails 3 consecutive health checks, the system automatically switches to the next healthy endpoint.
+
+4. **Retry Logic**: All Stellar operations include automatic retry with exponential backoff across available endpoints.
+
+5. **Monitoring**: The `/rpc-status` endpoint provides real-time visibility into endpoint health and current failover state.
+
+### Configuration Example
+
+```env
+# Primary endpoint + fallbacks
+STELLAR_HORIZON_ENDPOINTS=https://horizon-testnet.stellar.org,https://testnet.stellar.org,https://horizon-futurenet.stellar.org
+SOROBAN_RPC_ENDPOINTS=https://soroban-testnet.stellar.org,https://rpc-testnet.stellar.org
+```
+
+### Checking RPC Status
+
+```bash
+curl -X GET http://localhost:3001/rpc-status \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+**Response**:
+
+```json
+{
+  "currentHorizonEndpoint": "https://horizon-testnet.stellar.org",
+  "currentSorobanEndpoint": "https://soroban-testnet.stellar.org",
+  "horizonEndpoints": [
+    {
+      "url": "https://horizon-testnet.stellar.org",
+      "healthy": true,
+      "lastChecked": "2024-01-01T00:00:00.000Z",
+      "failureCount": 0
+    },
+    {
+      "url": "https://testnet.stellar.org",
+      "healthy": true,
+      "lastChecked": "2024-01-01T00:00:00.000Z",
+      "failureCount": 0
+    }
+  ],
+  "sorobanEndpoints": [
+    {
+      "url": "https://soroban-testnet.stellar.org",
+      "healthy": true,
+      "lastChecked": "2024-01-01T00:00:00.000Z",
+      "failureCount": 0
+    }
+  ],
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
 
 ### Client usage
 
@@ -178,6 +242,14 @@ very large or streamed payloads.
 | GET    | `/health`  | Health check       |
 | GET    | `/metrics` | Prometheus metrics |
 
+### RPC Status
+
+Provides visibility into Stellar RPC endpoint health and failover status. Requires JWT authentication.
+
+| Method | Endpoint      | Description                                                  |
+| ------ | ------------- | ------------------------------------------------------------ |
+| GET    | `/rpc-status` | Get current RPC endpoint status, health information, and failover state |
+
 ### IPFS Pinning
 
 | Method | Endpoint             | Description                                                |
@@ -187,6 +259,17 @@ very large or streamed payloads.
 | GET    | `/ipfs/pins/:cid`    | Get a pin record by CID                                     |
 | POST   | `/ipfs/pins/:cid/verify` | Re-verify durability and top up replication if degraded |
 | DELETE | `/ipfs/pins/:cid`    | Unpin from every provider currently holding the content      |
+
+### Admin Analytics
+
+Restricted to wallet addresses listed in `ADMIN_ADDRESSES` (see [Environment Variables](#environment-variables)). All routes require a JWT (`Authorization: Bearer ...`) from an admin address and return `403 Forbidden` for anyone else.
+
+| Method | Endpoint                  | Description                                                  |
+| ------ | -------------------------- | ------------------------------------------------------------ |
+| GET    | `/admin/analytics/overview`  | Full dashboard snapshot: escrows, gigs, disputes, reputation, migrations, reconciliation |
+| GET    | `/admin/analytics/escrows`   | Escrow totals and status breakdown                          |
+| GET    | `/admin/analytics/gigs`      | Gig solicitation totals and status breakdown                |
+| GET    | `/admin/analytics/disputes`  | Dispute saga totals, step, and verdict breakdown             |
 
 ---
 
@@ -379,6 +462,9 @@ IDEMPOTENCY_KEY_TTL_SECONDS=86400
 STELLAR_NETWORK=TESTNET
 STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
 SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+# Multiple endpoints for RPC failover (comma-separated, first is primary)
+STELLAR_HORIZON_ENDPOINTS=https://horizon-testnet.stellar.org,https://testnet.stellar.org
+SOROBAN_RPC_ENDPOINTS=https://soroban-testnet.stellar.org,https://rpc-testnet.stellar.org
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/... (optional)
 
 # IPFS pinning providers (all optional — unconfigured providers run in an
@@ -388,6 +474,10 @@ WEB3_STORAGE_TOKEN=
 INFURA_IPFS_PROJECT_ID=
 INFURA_IPFS_PROJECT_SECRET=
 IPFS_REPIN_INTERVAL_MS=300000
+
+# Admin dashboard — comma-separated Stellar addresses allowed to call /admin/*
+# (required for those routes to return anything but 403)
+ADMIN_ADDRESSES=
 ```
 
 ---
