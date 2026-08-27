@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AuthModule } from './auth.module';
 import { AuthService } from './auth.service';
 
@@ -41,9 +41,7 @@ describe('Auth (E2E)', () => {
     });
 
     it('returns 400 or error when address is missing', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/auth/challenge')
-        .expect(500);
+      const res = await request(app.getHttpServer()).get('/auth/challenge').expect(500);
 
       // The controller throws a raw Error('address required') which NestJS turns into 500
       expect(res.status).toBe(500);

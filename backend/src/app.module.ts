@@ -20,6 +20,7 @@ import { AdminModule } from './admin/admin.module';
 import { DeliverableModule } from './deliverable/deliverable.module';
 import { MilestoneNotificationsModule } from './milestone-notifications/milestone-notifications.module';
 import { SorobanEventIndexerModule } from './soroban-event-indexer/soroban-event-indexer.module';
+import { OutboxModule } from './outbox/outbox.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { SorobanEventIndexerModule } from './soroban-event-indexer/soroban-event
     DeliverableModule,
     MilestoneNotificationsModule,
     SorobanEventIndexerModule,
+    OutboxModule,
   ],
 })
 export class AppModule {}
