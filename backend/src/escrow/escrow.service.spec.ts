@@ -18,6 +18,22 @@ describe('EscrowService', () => {
     service = module.get<EscrowService>(EscrowService);
   });
 
+  describe('create', () => {
+    it('generates unique IDs even when called concurrently in a tight loop', async () => {
+      const numEscrows = 1000;
+      const promises: Promise<import('./escrow.service').Escrow>[] = [];
+      for (let i = 0; i < numEscrows; i++) {
+        promises.push(service.create(`GDEP${i}`, `GBEN${i}`, '100'));
+      }
+      
+      const escrows = await Promise.all(promises);
+      const ids = new Set(escrows.map(e => e.id));
+      
+      expect(ids.size).toBe(numEscrows);
+      
+      // Verify UUID format (basic check)
+      const sampleId = escrows[0].id;
+      expect(sampleId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
@@ -95,6 +111,43 @@ describe('EscrowService', () => {
     });
   });
 
+  describe('findByDepositor', () => {
+    it('returns paginated results for a depositor', async () => {
+      for (let i = 0; i < 5; i++) {
+        await service.create('GDEP', 'GBEN', '100');
+      }
+      await service.create('GOTHER', 'GBEN', '200');
+
+      const result = await service.findByDepositor('GDEP', 0, 3);
+
+      expect(result.total).toBe(5);
+      expect(result.data).toHaveLength(3);
+    });
+
+    it('returns empty data when offset exceeds total', async () => {
+      await service.create('GDEP', 'GBEN', '100');
+
+      const result = await service.findByDepositor('GDEP', 10, 20);
+
+      expect(result.total).toBe(1);
+      expect(result.data).toHaveLength(0);
+    });
+
+    it('returns empty data for unknown depositor', async () => {
+      await service.create('GDEP', 'GBEN', '100');
+
+      const result = await service.findByDepositor('GUNKNOWN', 0, 20);
+
+      expect(result.total).toBe(0);
+      expect(result.data).toHaveLength(0);
+    });
+  });
+
+  describe('fund', () => {
+    it('updates status to active for a pending escrow', async () => {
+      const escrow = await service.create('GDEP', 'GBEN', '100');
+      const updated = await service.fund(escrow.id);
+      expect(updated.status).toBe('active');
   // ─── release() ────────────────────────────────────────────────────────────
 
   describe('release()', () => {
